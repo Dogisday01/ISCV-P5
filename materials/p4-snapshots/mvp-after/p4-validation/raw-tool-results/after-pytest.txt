@@ -1,0 +1,15 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.5, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\nurym\OneDrive\���������\Assignment 3\mvp
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.13.0, cov-7.1.0
+collected 19 items
+
+tests\test_auth.py ...                                                   [ 15%]
+tests\test_frontend.py ..                                                [ 26%]
+tests\test_maintenance_requests.py .....                                 [ 52%]
+tests\test_security_hardening.py ........                                [ 94%]
+tests\test_users_directory.py .                                          [100%]
+
+============================= 19 passed in 2.54s ==============================

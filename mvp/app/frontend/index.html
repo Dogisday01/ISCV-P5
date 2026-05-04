@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Field Operations Console</title>
+    <link rel="stylesheet" href="/app/app.css">
+  </head>
+  <body>
+    <div class="page-grid">
+      <aside class="rail">
+        <div class="rail-head">
+          <p class="rail-kicker">Variant 2 · Oil and Gas Maintenance</p>
+          <h1>Field Operations Console</h1>
+          <p class="rail-copy">
+            Track registered assets, dispatch work orders, move requests through the maintenance
+            workflow, and review privileged summary exports without leaving the secure MVP perimeter.
+          </p>
+        </div>
+        <nav class="rail-nav" id="rail-nav" aria-label="Workspace navigation"></nav>
+        <div class="rail-foot">
+          <p id="session-note" class="session-note">
+            Tokens stay in memory only. Reloading the page clears the current session.
+          </p>
+        </div>
+      </aside>
+      <main class="workspace">
+        <section id="hero-panel" class="hero-panel"></section>
+        <section id="notice-panel" class="notice-panel" aria-live="polite"></section>
+        <section id="workspace-root" class="workspace-root"></section>
+      </main>
+    </div>
+    <script type="module" src="/app/app.js"></script>
+  </body>
+</html>
