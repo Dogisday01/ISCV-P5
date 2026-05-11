@@ -276,53 +276,105 @@ def add_intro(doc: Document) -> None:
         """
 direction: right
 
-external: {
-  label: "External / untrusted zone"
-  style.fill: "#F4F1EA"
-  client: "Browser / API client"
-  frontend: "Static frontend /app"
+client_in: {
+  label: "Zone 1a: Untrusted request origin"
+  style.fill: "#FFF5F2"
+  user: "Human user: engineer / supervisor / technical admin"
+  browser_js: "Browser + delivered app.js; untrusted after /app delivery"
+  api_client: "Direct API client / automated test client"
 }
 
-application: {
-  label: "Application trust boundary"
-  style.fill: "#FBFAF7"
-  routes: "FastAPI routes"
-  dependencies: "Dependencies: current user and DB session"
-  validation: "Pydantic validation and bounded query params"
-  services: "Services and business rules"
-  authorization: "Authorization: role and object matrix"
-  audit: "Audit log helper"
+b1: {
+  label: "B1: untrusted request enters server"
+  shape: diamond
+}
+
+server: {
+  label: "Zone 2: FastAPI application trust boundary"
+  style.fill: "#E8F5F4"
+  direction: down
+  static_handler: "Static asset handler: /app; delivery only"
+  ingress: "Middleware: body limit and security headers"
+  routes: "API routes: /api/v1 and /auth"
+  validation: "Pydantic schemas and Query bounds"
+  auth_context: "Dependencies: JWT current user and DB session"
+  authn: "Authentication service"
+  authz: "Authorization matrix: role + object relation"
+  services: "Business services"
+  response_filter: "Response models / serializers"
+  audit: "Audit helper"
+}
+
+persistence: {
+  label: "Zone 3: Trusted persistence boundary"
+  style.fill: "#F7F1E8"
   orm: "SQLAlchemy ORM"
-  database: {
-    label: "SQLite / production DB"
+  db: {
+    label: "DB tables: users, assets, requests"
     shape: cylinder
   }
-  refresh_store: {
-    label: "Refresh token hash store"
+  refresh_tokens: {
+    label: "Refresh token hashes"
+    shape: cylinder
+  }
+  audit_logs: {
+    label: "Audit log records"
     shape: cylinder
   }
 }
 
-external.client -> application.routes: "JSON, form data, query params, headers"
-external.frontend -> application.routes: "same-origin fetch; textContent rendering"
-application.routes -> application.validation
-application.routes -> application.dependencies
-application.dependencies -> application.authorization
-application.validation -> application.services
-application.authorization -> application.services
-application.services -> application.orm
-application.orm -> application.database
-application.services -> application.refresh_store
-application.services -> application.audit
-application.audit -> application.database
+configuration: {
+  label: "Zone 4: Deployment configuration boundary"
+  style.fill: "#EEF0F4"
+  env: "Environment variables"
+  settings: "Settings validation"
+  secrets: "SECRET_KEY, TTLs, bootstrap passwords"
+}
+
+b2: {
+  label: "B2: filtered response leaves server"
+  shape: diamond
+}
+
+client_out: {
+  label: "Zone 1b: Untrusted response handling"
+  style.fill: "#FFF5F2"
+  browser_runtime: "Browser runtime receives JSON/static responses"
+  dom: "DOM rendering surface"
+}
+
+client_in.user -> client_in.browser_js: "uses UI"
+client_in.browser_js -> b1: "same-origin fetch with JSON/form/query/header data"
+client_in.api_client -> b1: "direct HTTP request"
+b1 -> server.ingress: "first server-side control point"
+server.ingress -> server.routes: "bounded body and security headers"
+server.routes -> server.validation: "parse and validate user input"
+server.routes -> server.auth_context: "load bearer token, user and DB session"
+server.auth_context -> server.authz: "current role and object relation"
+server.routes -> server.authn: "login/refresh flow"
+server.validation -> server.services: "validated payload only"
+server.authz -> server.services: "allowed action only"
+server.services -> server.audit: "operation outcome"
+server.services -> persistence: "ORM reads/writes, refresh hashes and audit records"
+server.authn -> persistence: "store refresh token hash only"
+server.audit -> persistence: "structured event without secrets"
+server.services -> server.response_filter: "domain object"
+server.static_handler -> server.response_filter: "HTML/CSS/JS response also exits through B2"
+server.response_filter -> b2: "response_model-filtered JSON or static response"
+b2 -> client_out.browser_runtime: "data/code leaves server trust boundary"
+client_out.browser_runtime -> client_out.dom: "render API data with textContent"
+configuration.env -> configuration.secrets: "deployment-provided values"
+configuration.secrets -> configuration.settings: "startup validation"
+configuration.settings -> server: "validated secret, TTL and request-limit policy"
 """,
         [
-            ["F1", "Browser/API client", "FastAPI routes", "JSON, form data, query params, headers", "Request size limit, Pydantic validation, neutral errors."],
-            ["F2", "Static frontend /app", "FastAPI routes", "same-origin API calls", "No token persistence; API data rendered with textContent."],
-            ["F3", "FastAPI routes", "Dependencies", "Bearer token and DB session", "JWT validation, active user check, session lifecycle in dependency."],
-            ["F4", "Dependencies", "Authorization matrix", "current user role and object relation", "Role checks plus object-level status transition checks."],
-            ["F5", "Services", "SQLAlchemy ORM / DB", "validated business objects", "Expression API, bounded pagination, no raw SQL string construction."],
-            ["F6", "Services", "Audit log helper", "structured event details", "No password/token logging; controlled action names."],
+            ["F1", "FastAPI static asset handler", "Browser runtime", "HTML/CSS/JS delivery", "After delivery the frontend executes in the untrusted client environment."],
+            ["F2", "Browser runtime / API client", "FastAPI middleware", "JSON, form data, query params, Authorization header", "Main trust-boundary crossing B1; request size limit and security headers."],
+            ["F3", "FastAPI routes", "Validation and dependencies", "payload, query values, bearer token, DB session", "Pydantic validation, Query(le=...), JWT validation, active-user check."],
+            ["F4", "Authorization matrix", "Business services", "role, object ownership, requested transition", "Server-side role and object checks before state mutation."],
+            ["F5", "Business services", "Persistence boundary", "ORM query/update, refresh hash, audit record", "SQLAlchemy expression API, hash-only token storage, no secret audit details."],
+            ["F6", "Response models", "Browser DOM surface", "serialized JSON response", "Boundary crossing B2; response_model filtering and textContent rendering."],
+            ["F7", "Environment variables", "Settings validation", "SECRET_KEY, TTLs, bootstrap passwords, limits", "Production rejects placeholder secrets, DEBUG=true, and unsafe bootstrap credentials."],
         ],
     )
 
@@ -450,72 +502,103 @@ def add_task2(doc: Document) -> None:
         "Листинг 2. D2-код source -> propagation -> sink -> protection.",
         "Код фиксирует основные точки входа пользовательских данных, распространение внутри MVP, dangerous sinks и меры защиты. D2-источник может быть отрендерен в SVG и использован как схема в draw.io или Word.",
         """
-direction: right
+direction: down
+grid-rows: 6
+grid-gap: 60
 
-sources: {
-  label: "Sources"
-  login: "Login form: email/password"
-  token: "Bearer token"
-  params: "Path and query params"
-  body: "JSON request body"
-  filters: "Report filters"
+f1_authentication: {
+  label: "F1. Authentication source to credential and refresh-token sinks"
+  direction: right
+  style.fill: "#FFF5F2"
+  source: "Source: login form username/password in untrusted browser"
+  b1: {
+    label: "B1: POST /auth/login enters FastAPI"
+    shape: diamond
+  }
+  propagation: "Propagation: middleware -> auth route -> authentication service"
+  sink: "Sinks: password hash verification and refresh token storage"
+  protection: "Protection: dummy Argon2 path, neutral login error, hash-only refresh token"
+  source -> b1 -> propagation -> sink -> protection
 }
 
-propagation: {
-  label: "Propagation"
-  routes: "FastAPI routes"
-  schemas: "Pydantic schemas"
-  dependencies: "Dependencies"
-  services: "Service layer"
-  authz: "Authorization checks"
+f2_authorization: {
+  label: "F2. Bearer token source to authorization decision"
+  direction: right
+  style.fill: "#FFF5F2"
+  source: "Source: Authorization header from browser/API client"
+  b1: {
+    label: "B1: protected request enters server"
+    shape: diamond
+  }
+  propagation: "Propagation: JWT dependency -> active user lookup -> DB session"
+  sink: "Sink: authorization decision for role and object relation"
+  protection: "Protection: signed JWT validation, active-user check, object-level matrix"
+  source -> b1 -> propagation -> sink -> protection
 }
 
-sinks: {
-  label: "Dangerous sinks"
-  auth: "Password verification and token issuance"
-  db: "SQLAlchemy DB queries"
-  status_update: "Maintenance status update"
-  audit_json: "Audit JSON details"
-  report_json: "Report JSON response"
-  dom: "Frontend DOM"
+f3_query_data: {
+  label: "F3. Path and query input to database read sink"
+  direction: right
+  style.fill: "#FFF5F2"
+  source: "Source: UUID path params, role/status filters, limit, offset"
+  b1: {
+    label: "B1: list/report request enters server"
+    shape: diamond
+  }
+  propagation: "Propagation: FastAPI route -> Pydantic/enum parsing -> service layer"
+  sink: "Sink: SQLAlchemy SELECT against users/assets/requests tables"
+  protection: "Protection: Query(le=...), enum/UUID validation, ORM expressions"
+  source -> b1 -> propagation -> sink -> protection
 }
 
-protections: {
-  label: "Protections"
-  argon2: "Argon2 and dummy hash"
-  orm_bounds: "ORM expressions and bounded pagination"
-  object_matrix: "Role plus object matrix"
-  no_secret_logging: "No secret logging"
-  response_models: "Pydantic response models"
-  text_content: "textContent rendering"
+f4_state_change: {
+  label: "F4. JSON body to maintenance status mutation sink"
+  direction: right
+  style.fill: "#FFF5F2"
+  source: "Source: JSON body with status, assigned_engineer_id, internal_notes"
+  b1: {
+    label: "B1: create/update request enters server"
+    shape: diamond
+  }
+  propagation: "Propagation: schema validator -> maintenance service -> authorization matrix"
+  sink: "Sink: UPDATE of maintenance request status/assignment"
+  protection: "Protection: role checks plus assigned/requester object checks before mutation"
+  source -> b1 -> propagation -> sink -> protection
 }
 
-sources.login -> propagation.routes: "email/password"
-propagation.routes -> sinks.auth: "credential verification"
-sinks.auth -> protections.argon2
-sources.token -> propagation.dependencies: "JWT"
-propagation.dependencies -> propagation.authz
-propagation.authz -> sinks.status_update
-sinks.status_update -> protections.object_matrix
-sources.params -> propagation.schemas
-propagation.schemas -> propagation.services
-propagation.services -> sinks.db
-sinks.db -> protections.orm_bounds
-sources.body -> propagation.schemas: "status payload"
-sources.filters -> propagation.routes
-propagation.services -> sinks.report_json
-sinks.report_json -> protections.response_models
-sinks.audit_json -> protections.no_secret_logging
-sinks.report_json -> sinks.dom
-sinks.dom -> protections.text_content
+f5_audit: {
+  label: "F5. Server context to audit JSON sink"
+  direction: right
+  style.fill: "#EFFAF8"
+  source: "Source: server-side request context after authentication"
+  propagation: "Propagation: route/service outcome -> audit helper"
+  sink: "Sink: audit_logs.details JSON"
+  protection: "Protection: allowlisted event fields; no raw password or token values"
+  source -> propagation -> sink -> protection
+}
+
+f6_response_dom: {
+  label: "F6. Report response to untrusted DOM sink"
+  direction: right
+  style.fill: "#EFFAF8"
+  source: "Source: server-side report/query result"
+  propagation: "Propagation: response_model serializer"
+  b2: {
+    label: "B2: JSON leaves server trust boundary"
+    shape: diamond
+  }
+  sink: "Sink: browser DOM update"
+  protection: "Protection: response_model filtering plus textContent rendering"
+  source -> propagation -> b2 -> sink -> protection
+}
 """,
         [
-            ["F1", "Login form", "Password verification/token sink", "email and password", "Argon2 verification, dummy hash for absent/inactive/locked user, neutral error."],
-            ["F2", "Bearer token", "Authorization decision", "JWT claims and current user", "JWT validation, active user lookup, role/object matrix."],
-            ["F3", "Query params", "SQLAlchemy DB query", "limit, offset, role/status filters", "Typed enums, ge/le bounds, ORM expression API."],
-            ["F4", "JSON request body", "Maintenance status update", "status, assigned_engineer_id, internal_notes", "Pydantic validator and backend authorization check."],
-            ["F5", "Request context", "Audit JSON details", "actor, action, entity, outcome", "Structured details without raw passwords or tokens."],
-            ["F6", "Report filters", "Report JSON and frontend DOM", "summary rows and status counts", "Role-protected report endpoint, response_model, textContent rendering."],
+            ["F1", "Login form", "Password verification and refresh token sinks", "username/password form data", "Dummy Argon2 verification, neutral error, refresh token stored as hash."],
+            ["F2", "Authorization header", "JWT dependency and authorization matrix", "bearer token and current user lookup", "JWT validation, active user check, object-level authorization."],
+            ["F3", "Path/query parameters", "SQLAlchemy query sink", "UUID, role/status filter, limit, offset", "Pydantic/enum parsing, Query bounds, ORM expressions."],
+            ["F4", "JSON request body", "Maintenance status mutation sink", "status, assigned_engineer_id, internal_notes", "Pydantic validator plus server-side role/object transition check."],
+            ["F5", "Server request context", "Audit JSON sink", "actor, action, entity, outcome, IP", "Structured allowlisted fields; no passwords or tokens."],
+            ["F6", "Report response", "Browser DOM sink", "maintenance summary rows and counts", "Role-protected report, response_model filtering, textContent rendering."],
         ],
     )
     add_table(
@@ -614,50 +697,93 @@ def add_task3(doc: Document) -> None:
         """
 direction: down
 
-login: "1. Login request"
-authn: "2. Authentication: active user and password hash"
-token: "3. Access token issued"
-load: "4. Load current user and request object"
-assign: "5. Supervisor assigns engineer"
-engineer_check: {
-  label: "6. Actor is assigned engineer?"
+request: "Incoming protected API request"
+authn_check: {
+  label: "Authenticated and active user?"
   shape: diamond
 }
-start: "7. Move assigned request to in_progress"
-complete: "8. Move assigned request to completed"
-audit: "9. Audit event and report data"
-deny: {
+deny_401: {
+  label: "401 Unauthorized"
+  shape: hexagon
+}
+load_context: "Load current user, role, DB session, target object"
+action: {
+  label: "Requested action"
+  shape: diamond
+}
+
+assign_cancel: "Assign engineer or cancel request"
+privileged_check: {
+  label: "Role is supervisor or technical_admin?"
+  shape: diamond
+}
+allow_assign: "Allow assign/cancel"
+
+start_complete: "Start or complete maintenance work"
+assigned_check: {
+  label: "Actor is assigned engineer?"
+  shape: diamond
+}
+allow_work: "Allow in_progress/completed"
+
+requester_cancel: "Requester cancels own open request"
+requester_check: {
+  label: "Requester owns open unassigned request?"
+  shape: diamond
+}
+allow_requester_cancel: "Allow cancel"
+
+directory: "User directory request"
+directory_role: {
+  label: "Directory role scope"
+  shape: diamond
+}
+engineer_only: "Supervisor: force engineer-only directory"
+admin_all: "Technical admin: allow all roles"
+
+deny_403: {
   label: "403 Forbidden"
   shape: hexagon
 }
-directory_check: {
-  label: "Directory access requested?"
-  shape: diamond
-}
-engineer_directory: "Engineer-only directory"
-full_directory: "Full role directory"
+audit: "Audit operation result"
+response: "Return filtered response_model"
 
-login -> authn
-authn -> token
-token -> load
-load -> assign
-assign -> engineer_check
-engineer_check -> start: "yes"
-start -> complete
-complete -> audit
-engineer_check -> deny: "no: supervisor/admin attempts start or complete"
-deny -> audit
-load -> directory_check
-directory_check -> engineer_directory: "supervisor"
-directory_check -> full_directory: "technical_admin"
+request -> authn_check
+authn_check -> deny_401: "no"
+authn_check -> load_context: "yes"
+load_context -> action
+action -> assign_cancel: "assign/cancel"
+assign_cancel -> privileged_check
+privileged_check -> allow_assign: "yes"
+privileged_check -> deny_403: "no"
+action -> start_complete: "start/complete"
+start_complete -> assigned_check
+assigned_check -> allow_work: "yes"
+assigned_check -> deny_403: "no: supervisor/admin is not assigned engineer"
+action -> requester_cancel: "cancel own open request"
+requester_cancel -> requester_check
+requester_check -> allow_requester_cancel: "yes"
+requester_check -> deny_403: "no"
+action -> directory: "list users"
+directory -> directory_role
+directory_role -> engineer_only: "supervisor"
+directory_role -> admin_all: "technical_admin"
+directory_role -> deny_403: "engineer or disallowed role filter"
+allow_assign -> audit
+allow_work -> audit
+allow_requester_cancel -> audit
+engineer_only -> response
+admin_all -> response
+audit -> response
+deny_403 -> audit
 """,
         [
-            ["F1", "Login request", "Authentication service", "email and password", "Password hash verification, dummy hash path, neutral error."],
-            ["F2", "Access token", "Current user dependency", "Bearer token", "JWT validation and active user lookup."],
-            ["F3", "Supervisor", "Assigned request", "assign engineer action", "Privileged assign/cancel allowed by role check."],
-            ["F4", "Assigned engineer", "Status transition", "in_progress and completed", "Object-level check: actor id equals assigned_engineer_id."],
-            ["F5", "Supervisor/admin", "Forbidden status transition", "start/complete attempt", "HTTP 403 because privileged role is not assigned engineer."],
-            ["F6", "Directory request", "User listing response", "role filter", "Supervisor forced to engineer scope; technical admin can list all roles."],
+            ["F1", "Protected API request", "Authentication decision", "Bearer token and active user state", "Missing/invalid/inactive user returns 401 before object logic."],
+            ["F2", "Authenticated context", "Assign/cancel decision", "role and requested transition", "Supervisor or technical_admin may assign/cancel; engineer cannot assign."],
+            ["F3", "Authenticated context", "Start/complete decision", "actor id and assigned_engineer_id", "Only assigned engineer can move work to in_progress/completed."],
+            ["F4", "Requester cancel path", "Cancel decision", "requested_by_id, open status, assigned_engineer_id", "Requester can cancel only own open unassigned request."],
+            ["F5", "User directory request", "Directory scope decision", "current role and role filter", "Supervisor forced to engineers; technical_admin can list all roles; invalid scope returns 403."],
+            ["F6", "Allowed or denied decision", "Audit and response", "operation outcome", "Allowed changes are audited and serialized; forbidden paths return controlled 403."],
         ],
     )
     add_table(
