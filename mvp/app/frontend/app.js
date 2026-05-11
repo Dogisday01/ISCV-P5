@@ -94,6 +94,15 @@ function statusLabel(status) {
   return status.replaceAll("_", " ");
 }
 
+function actionLabel(status) {
+  return {
+    assigned: "Assign engineer",
+    in_progress: "Start work",
+    completed: "Complete work",
+    cancelled: "Cancel request",
+  }[status] || statusLabel(status);
+}
+
 function statusChip(status) {
   return node("span", {
     className: `status-chip status-${status}`,
@@ -105,8 +114,47 @@ function roleLabel(role) {
   return ROLE_LABELS[role] || role;
 }
 
-function assetTagMap() {
-  return new Map(state.assets.map((asset) => [asset.id, asset.asset_tag]));
+function assetLookup() {
+  return new Map(state.assets.map((asset) => [asset.id, asset]));
+}
+
+function engineerLookup() {
+  return new Map(state.engineers.map((engineer) => [engineer.id, engineer]));
+}
+
+function assetSearchLabel(asset) {
+  return `${asset.asset_tag} - ${asset.name} | ${asset.facility} | ${asset.equipment_type}`;
+}
+
+function renderAssetCell(assetId) {
+  const asset = assetLookup().get(assetId);
+  if (!asset) {
+    return node("div", {}, [
+      node("span", { className: "subtle-copy", text: "Unknown asset" }),
+      node("code", { className: "technical-id", text: assetId }),
+    ]);
+  }
+  return node("div", { className: "entity-cell" }, [
+    node("strong", { text: `${asset.asset_tag} - ${asset.name}` }),
+    node("span", { text: `${asset.facility} / ${asset.equipment_type}` }),
+  ]);
+}
+
+function renderEngineerCell(engineerId) {
+  if (!engineerId) {
+    return node("span", { className: "subtle-copy", text: "Unassigned" });
+  }
+  const engineer = engineerLookup().get(engineerId);
+  if (!engineer) {
+    return node("div", {}, [
+      node("span", { className: "subtle-copy", text: "Engineer not in current directory" }),
+      node("code", { className: "technical-id", text: engineerId }),
+    ]);
+  }
+  return node("div", { className: "entity-cell" }, [
+    node("strong", { text: engineer.full_name }),
+    node("span", { text: engineer.email }),
+  ]);
 }
 
 function isPrivileged() {
@@ -119,7 +167,7 @@ function allowedTransitions(item) {
   }
   const base = STATUS_FLOW[item.status] || [];
   if (isPrivileged()) {
-    return base;
+    return base.filter((status) => status === "assigned" || status === "cancelled");
   }
   if (item.assigned_engineer_id === state.user.id) {
     return base.filter((status) => status === "in_progress" || status === "completed");
@@ -284,8 +332,13 @@ async function handleAssetCreate(event) {
 async function handleRequestCreate(event) {
   event.preventDefault();
   const form = event.currentTarget;
+  const assetId = form.asset_id.value;
+  if (!assetId) {
+    setNotice("error", "Select an asset from the asset list before opening a request.");
+    return;
+  }
   const payload = {
-    asset_id: form.asset_id.value,
+    asset_id: assetId,
     title: form.title.value.trim(),
     description: form.description.value.trim() || null,
     issue_code: form.issue_code.value.trim() || null,
@@ -311,6 +364,10 @@ async function handleStatusUpdate(event, item) {
   const nextStatus = form.status.value;
   const payload = { status: nextStatus };
   if (nextStatus === "assigned") {
+    if (!form.assigned_engineer_id.value) {
+      setNotice("error", "Select an engineer before assigning the request.");
+      return;
+    }
     payload.assigned_engineer_id = form.assigned_engineer_id.value;
     payload.internal_notes = form.internal_notes.value.trim() || null;
   }
@@ -318,6 +375,21 @@ async function handleStatusUpdate(event, item) {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    setNotice("error", await readError(response, "Unable to update request status"));
+    return;
+  }
+  await loadWorkspace();
+  setNotice("success", `Request moved to ${statusLabel(nextStatus)}.`);
+  render();
+}
+
+async function handleQuickStatusUpdate(item, nextStatus) {
+  const response = await apiFetch(`/maintenance-requests/${item.id}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: nextStatus }),
   });
   if (!response.ok) {
     setNotice("error", await readError(response, "Unable to update request status"));
@@ -351,8 +423,8 @@ function renderHero() {
         ["Requests in view", String(state.requests.length)],
       ]
     : [
-        ["Workflow", "asset → request → assign → in progress → completed"],
-        ["Security posture", "same-origin fetch · memory-only tokens · CSP"],
+        ["Workflow", "asset -> request -> assign -> in progress -> completed"],
+        ["Security posture", "same-origin fetch - memory-only tokens - CSP"],
         ["Privileged export", "supervisor / technical admin"],
       ];
 
@@ -585,7 +657,6 @@ function requestsTable(items, includeActions = true) {
   if (!items.length) {
     return node("p", { className: "empty-state", text: "No maintenance requests are visible in the current view." });
   }
-  const tagLookup = assetTagMap();
   const table = node("table");
   table.append(
     node("thead", {}, [
@@ -604,47 +675,60 @@ function requestsTable(items, includeActions = true) {
     if (includeActions) {
       const transitions = allowedTransitions(item);
       if (transitions.length) {
-        const form = node("form", { className: "inline-form" });
-        const select = node("select", { name: "status" });
-        transitions.forEach((transition) => {
-          select.append(node("option", { value: transition, text: statusLabel(transition) }));
-        });
-        form.append(select);
+        const actionStack = node("div", { className: "action-stack" });
         if (transitions.includes("assigned")) {
-          const engineerSelect = node("select", { name: "assigned_engineer_id" });
-          state.engineers.forEach((engineer) => {
-            engineerSelect.append(
-              node("option", {
-                value: engineer.id,
-                text: `${engineer.full_name} · ${engineer.email}`,
+          if (state.engineers.length) {
+            const form = node("form", { className: "inline-form" });
+            form.append(node("input", { type: "hidden", name: "status", value: "assigned" }));
+            const engineerSelect = node("select", { name: "assigned_engineer_id" });
+            state.engineers.forEach((engineer) => {
+              engineerSelect.append(
+                node("option", {
+                  value: engineer.id,
+                  text: `${engineer.full_name} - ${engineer.email}`,
+                })
+              );
+            });
+            form.append(engineerSelect);
+            form.append(
+              node("textarea", {
+                name: "internal_notes",
+                rows: "3",
+                placeholder: "Dispatch note for the assigned engineer",
               })
             );
-          });
-          form.append(engineerSelect);
-          form.append(
-            node("textarea", {
-              name: "internal_notes",
-              rows: "3",
-              placeholder: "Dispatch note for the assigned engineer",
-            })
-          );
+            const submit = node("button", { className: "secondary-button", type: "submit", text: "Assign engineer" });
+            form.append(node("div", { className: "button-row" }, [submit]));
+            form.addEventListener("submit", (event) => {
+              handleStatusUpdate(event, item);
+            });
+            actionStack.append(form);
+          } else {
+            actionStack.append(node("span", { className: "subtle-copy", text: "Assignment unavailable: no engineers loaded." }));
+          }
         }
-        const submit = node("button", { className: "secondary-button", type: "submit", text: "Apply" });
-        form.append(node("div", { className: "button-row" }, [submit]));
-        form.addEventListener("submit", (event) => {
-          handleStatusUpdate(event, item);
+        transitions.filter((transition) => transition !== "assigned").forEach((transition) => {
+          const button = node("button", {
+            className: transition === "cancelled" ? "danger-button" : "secondary-button",
+            type: "button",
+            text: actionLabel(transition),
+          });
+          button.addEventListener("click", () => {
+            handleQuickStatusUpdate(item, transition);
+          });
+          actionStack.append(button);
         });
-        actionCell.append(form);
+        actionCell.append(actionStack);
       } else {
-        actionCell.append(node("span", { className: "subtle-copy", text: "No client-side action" }));
+        actionCell.append(node("span", { className: "subtle-copy", text: "No available action for this role/state." }));
       }
     }
     body.append(
       node("tr", {}, [
         node("td", {}, [node("strong", { text: item.title }), node("div", { text: item.description || "No description" })]),
-        node("td", { text: tagLookup.get(item.asset_id) || item.asset_id }),
+        node("td", {}, [renderAssetCell(item.asset_id)]),
         node("td", {}, [statusChip(item.status)]),
-        node("td", { text: item.assigned_engineer_id || "Unassigned" }),
+        node("td", {}, [renderEngineerCell(item.assigned_engineer_id)]),
         actionCell,
       ])
     );
@@ -674,14 +758,42 @@ function assetCreateForm() {
   return form;
 }
 
-function requestCreateForm() {
-  const assetSelect = node("select", { name: "asset_id" });
-  state.assets.forEach((asset) => {
-    assetSelect.append(node("option", { value: asset.id, text: `${asset.asset_tag} · ${asset.name}` }));
+function assetChooser() {
+  const listId = "asset-choice-options";
+  const assetIdInput = node("input", { type: "hidden", name: "asset_id" });
+  const searchInput = node("input", {
+    name: "asset_search",
+    placeholder: "Search by asset tag, name, facility, or equipment type",
+    attrs: { list: listId, autocomplete: "off", required: "required" },
   });
+  const options = node("datalist", { id: listId });
+  const labelToId = new Map();
+  state.assets.forEach((asset) => {
+    const label = assetSearchLabel(asset);
+    labelToId.set(label, asset.id);
+    options.append(node("option", { value: label }));
+  });
+  searchInput.addEventListener("input", () => {
+    assetIdInput.value = labelToId.get(searchInput.value) || "";
+  });
+  return node("div", {}, [field("Asset", searchInput), assetIdInput, options]);
+}
+
+function requestCreateForm() {
+  if (!state.assets.length) {
+    return node("div", { className: "empty-state" }, [
+      node("p", { text: "No assets are available for new maintenance requests." }),
+      node("button", {
+        className: "secondary-button",
+        type: "button",
+        text: "Open request disabled",
+        attrs: { disabled: "disabled" },
+      }),
+    ]);
+  }
   const form = node("form");
   form.append(
-    field("Asset", assetSelect),
+    assetChooser(),
     node("div", { className: "form-grid" }, [
       field("Title", node("input", { name: "title", placeholder: "Seal leakage inspection" })),
       field("Issue code", node("input", { name: "issue_code", placeholder: "LEAK-01" })),
@@ -825,7 +937,7 @@ function reportTable(items) {
           node("td", { text: item.asset_tag }),
           node("td", { text: item.title }),
           node("td", {}, [statusChip(item.status)]),
-          node("td", { text: item.assigned_engineer_id || "Unassigned" }),
+          node("td", {}, [renderEngineerCell(item.assigned_engineer_id)]),
         ])
       )
     )
@@ -860,7 +972,7 @@ function render() {
       node("div", { className: "section-header" }, [
         node("div", {}, [
           node("h3", { text: `${state.user.full_name}` }),
-          node("p", { text: `${roleLabel(state.user.role)} · ${state.user.email}` }),
+          node("p", { text: `${roleLabel(state.user.role)} - ${state.user.email}` }),
         ]),
         node("div", { className: "button-row" }, [
           node("button", { className: "ghost-button", type: "button", text: "Sign out" }),

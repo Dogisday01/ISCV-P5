@@ -129,12 +129,6 @@ def add_bullets(doc: Document, items: list[str]) -> None:
         set_run_font(run, size=14)
 
 
-def add_drawio_instructions(doc: Document, title: str, purpose: str, steps: list[str]) -> None:
-    add_heading(doc, title)
-    add_paragraph(doc, purpose)
-    add_bullets(doc, steps)
-
-
 def add_code(doc: Document, text: str, *, size: float = 9) -> None:
     for line in text.strip("\n").splitlines():
         p = doc.add_paragraph()
@@ -144,6 +138,26 @@ def add_code(doc: Document, text: str, *, size: float = 9) -> None:
         run.font.name = "Consolas"
         run._element.rPr.rFonts.set(qn("w:eastAsia"), "Consolas")
         run.font.size = Pt(size)
+
+
+def add_mermaid_listing(
+    doc: Document,
+    listing_title: str,
+    description: str,
+    mermaid_code: str,
+    flows: list[list[str]],
+) -> None:
+    add_heading(doc, listing_title)
+    add_paragraph(doc, description)
+    add_code(doc, f"```mermaid\n{mermaid_code.strip()}\n```", size=8.2)
+    add_paragraph(doc, "Таблица потоков для данной диаграммы:")
+    add_table(
+        doc,
+        ["Flow ID", "Source", "Target", "Data / Action", "Control / Protection"],
+        flows,
+        [2.0, 5.3, 5.3, 6.7, 7.8],
+        font_size=8.2,
+    )
 
 
 def add_table(
@@ -255,18 +269,47 @@ def add_intro(doc: Document) -> None:
         "(установление личности), authorization (право на действие или объект) и cryptography "
         "(хеширование паролей, токенов и защита секретов).",
     )
-    add_drawio_instructions(
+    add_mermaid_listing(
         doc,
-        "Инструкция для draw.io: структурная схема MVP.",
-        "В этом месте отчета нужно вручную вставить структурную схему приложения. Ниже оставлена точная инструкция, чтобы схема соответствовала требованиям P5 и стилю отчета.",
+        "Листинг 1. Mermaid-код структурной схемы MVP и trust boundaries.",
+        "Код ниже может быть импортирован в draw.io через Insert -> Advanced -> Mermaid. Диаграмма показывает внешнюю недоверенную зону, границу доверия приложения и основные компоненты обработки данных.",
+        """
+flowchart LR
+    subgraph EXT["External / untrusted zone"]
+        C["Browser / API client"]
+        F["Static frontend /app"]
+    end
+    subgraph APP["Application trust boundary"]
+        R["FastAPI routes"]
+        D["Dependencies: current user and DB session"]
+        V["Pydantic validation and bounded query params"]
+        S["Services and business rules"]
+        A["Authorization: role and object matrix"]
+        L["Audit log helper"]
+        O["SQLAlchemy ORM"]
+        DB[("SQLite / production DB")]
+        T[("Refresh token hash store")]
+    end
+    C -->|"JSON, form data, query params, headers"| R
+    F -->|"same-origin fetch; textContent rendering"| R
+    R --> V
+    R --> D
+    D --> A
+    V --> S
+    A --> S
+    S --> O
+    O --> DB
+    S --> T
+    S --> L
+    L --> DB
+""",
         [
-            "Создать новый diagram в draw.io, ориентация Landscape. Заголовок сверху: P5 structural scheme: MVP runtime and trust boundaries.",
-            "Нарисовать две вложенные рамки: внешняя External / untrusted zone, внутренняя Application trust boundary.",
-            "Слева разместить прямоугольник Browser / API client: JSON, form data, headers.",
-            "Внутри boundary разместить блоки FastAPI routes, Dependencies/current user/DB session, Services/business rules, Authorization role+object status matrix, SQLAlchemy ORM/DB tables/refresh hashes, Audit log JSON details/no secrets, Static frontend/textContent/API rendering.",
-            "Провести стрелки: Client -> Routes, Client -> Dependencies, Routes -> Services, Dependencies -> Authorization, Authorization -> Services, Services -> SQLAlchemy ORM, Authorization -> Audit log, Frontend -> Authorization.",
-            "Цвета: источники светло-синие, validation/dependencies светло-зеленые, business/authz светло-желтые, storage/audit светло-оранжевые, frontend светло-фиолетовый.",
-            "Экспортировать как PNG 1800x980 или SVG и вставить в отчет после этой инструкции как Рисунок 1.",
+            ["F1", "Browser/API client", "FastAPI routes", "JSON, form data, query params, headers", "Request size limit, Pydantic validation, neutral errors."],
+            ["F2", "Static frontend /app", "FastAPI routes", "same-origin API calls", "No token persistence; API data rendered with textContent."],
+            ["F3", "FastAPI routes", "Dependencies", "Bearer token and DB session", "JWT validation, active user check, session lifecycle in dependency."],
+            ["F4", "Dependencies", "Authorization matrix", "current user role and object relation", "Role checks plus object-level status transition checks."],
+            ["F5", "Services", "SQLAlchemy ORM / DB", "validated business objects", "Expression API, bounded pagination, no raw SQL string construction."],
+            ["F6", "Services", "Audit log helper", "structured event details", "No password/token logging; controlled action names."],
         ],
     )
 
@@ -283,7 +326,7 @@ def add_intro(doc: Document) -> None:
             [
                 "Задание 2: secure code review входов и минимум 3 sink",
                 "Построена карта source-propagation-sink-protection: SQLAlchemy DB, audit JSON, report JSON, refresh token store, frontend DOM.",
-                "Схема trust boundaries, таблица sink и подтверждение защит в коде.",
+                "Mermaid-код trust boundaries, таблица потоков, таблица sink и подтверждение защит в коде.",
             ],
             [
                 "Задание 3: authentication, authorization, cryptography",
@@ -297,7 +340,7 @@ def add_intro(doc: Document) -> None:
             ],
             [
                 "Отчет: схема, flowchart, vulnerability table, role/access matrix, SAST/SCA, logs",
-                "Все перечисленные элементы включены в отчет; вместо ручных скриншотов приложены воспроизводимые command logs.",
+                "Все перечисленные элементы включены в отчет; диаграммы представлены Mermaid-кодом для draw.io и таблицами потоков.",
                 "Разделы 1-5 данного отчета.",
             ],
         ],
@@ -389,18 +432,57 @@ def add_task2(doc: Document) -> None:
         "sink и нет внешних сервисов, поэтому они отмечены как not applicable; вместо этого проверены "
         "реально существующие sinks: SQLAlchemy DB, refresh token store, audit JSON, report JSON и DOM-rendering.",
     )
-    add_drawio_instructions(
+    add_mermaid_listing(
         doc,
-        "Инструкция для draw.io: trust boundaries и dangerous sinks.",
-        "Вместо автоматической картинки здесь оставлена инструкция для ручной схемы source -> propagation -> sink -> protection.",
+        "Листинг 2. Mermaid-код source -> propagation -> sink -> protection.",
+        "Код предназначен для импорта в draw.io и фиксирует основные точки входа пользовательских данных, распространение внутри MVP, dangerous sinks и меры защиты.",
+        """
+flowchart LR
+    subgraph SRC["Sources"]
+        S1["Login form: email/password"]
+        S2["Bearer token"]
+        S3["Path and query params"]
+        S4["JSON request body"]
+        S5["Report filters"]
+    end
+    subgraph PROP["Propagation"]
+        P1["FastAPI routes"]
+        P2["Pydantic schemas"]
+        P3["Dependencies"]
+        P4["Service layer"]
+        P5["Authorization checks"]
+    end
+    subgraph SINK["Dangerous sinks"]
+        K1["Password verification and token issuance"]
+        K2["SQLAlchemy DB queries"]
+        K3["Maintenance status update"]
+        K4["Audit JSON details"]
+        K5["Report JSON response"]
+        K6["Frontend DOM"]
+    end
+    subgraph CTRL["Protections"]
+        C1["Argon2 and dummy hash"]
+        C2["ORM expressions and bounded pagination"]
+        C3["Role plus object matrix"]
+        C4["No secret logging"]
+        C5["Pydantic response models"]
+        C6["textContent rendering"]
+    end
+    S1 --> P1 --> K1 --> C1
+    S2 --> P3 --> P5 --> K3 --> C3
+    S3 --> P2 --> P4 --> K2 --> C2
+    S4 --> P2 --> P4 --> K3
+    S5 --> P1 --> P4 --> K5 --> C5
+    K4 --> C4
+    K5 --> K6 --> C6
+""",
         [
-            "Создать 4 вертикальные колонки: Sources, Propagation, Sinks, Protections.",
-            "В колонке Sources указать: Login form, Path/query params, JSON request body, Bearer token, Headers.",
-            "В колонке Propagation указать: Pydantic validation, FastAPI dependencies, Service functions, RBAC/object checks, Audit helper.",
-            "В колонке Sinks указать: SQLAlchemy DB, Refresh token store, Audit JSON, Report JSON, Frontend DOM.",
-            "В колонке Protections указать: Parameterized ORM, Argon2/hash only, No secret logging, Offset/limit bounds, textContent rendering.",
-            "Провести основные стрелки слева направо. Особо выделить цепочки: Query params -> Service functions -> SQLAlchemy DB -> Offset/limit bounds; Login form -> password verification -> Argon2/hash only; Report filters -> Report JSON -> response_model.",
-            "Цвета: Sources - голубой, Propagation - зеленый, Sinks - оранжевый, Protections - желтый. Экспортировать и вставить как Рисунок 2.",
+            ["F1", "Login form", "Password verification/token sink", "email and password", "Argon2 verification, dummy hash for absent/inactive/locked user, neutral error."],
+            ["F2", "Bearer token", "Authorization decision", "JWT claims and current user", "JWT validation, active user lookup, role/object matrix."],
+            ["F3", "Query params", "SQLAlchemy DB query", "limit, offset, role/status filters", "Typed enums, ge/le bounds, ORM expression API."],
+            ["F4", "JSON request body", "Maintenance status update", "status, assigned_engineer_id, internal_notes", "Pydantic validator and backend authorization check."],
+            ["F5", "Request context", "Audit JSON details", "actor, action, entity, outcome", "Structured details without raw passwords or tokens."],
+            ["F6", "Report filters", "Report JSON and frontend DOM", "summary rows and status counts", "Role-protected report endpoint, response_model, textContent rendering."],
         ],
     )
     add_table(
@@ -492,17 +574,33 @@ def add_task3(doc: Document) -> None:
         "обзора, но не получает право выполнять работу вместо назначенного engineer. Также устранены "
         "side-channel timing discrepancy на login path и риск production bootstrap credentials.",
     )
-    add_drawio_instructions(
+    add_mermaid_listing(
         doc,
-        "Инструкция для draw.io: flowchart принятия решения о доступе.",
-        "Эта схема нужна для P5 Task 3: показать легитимный и запрещенный сценарии authorization decision.",
+        "Листинг 3. Mermaid-код блок-схемы authorization decision.",
+        "Код ниже отражает два сценария из задания 3: легитимное выполнение работ назначенным engineer и запрещенную попытку supervisor выполнить работу вместо engineer.",
+        """
+flowchart TD
+    L["1. Login request"] --> AU["2. Authentication: active user and password hash"]
+    AU --> TOK["3. Access token issued"]
+    TOK --> LOAD["4. Load current user and request object"]
+    LOAD --> ASSIGN["5. Supervisor assigns engineer"]
+    ASSIGN --> ECHK{"6. Actor is assigned engineer?"}
+    ECHK -->|"yes"| START["7. Move assigned request to in_progress"]
+    START --> DONE["8. Move assigned request to completed"]
+    DONE --> AUDIT["9. Audit event and report data"]
+    ECHK -->|"no; supervisor/admin attempts start or complete"| DENY["403 Forbidden"]
+    LOAD --> DIR{"Directory access requested?"}
+    DIR -->|"supervisor"| ENG["Engineer-only directory"]
+    DIR -->|"technical_admin"| ALL["Full role directory"]
+    DENY --> AUDIT
+""",
         [
-            "Создать flowchart слева направо с блоками: 1 Login -> 2 Access token and active user -> 3 Create/list assets and requests -> 4 Supervisor assigns engineer.",
-            "От блока 4 сделать синюю ветку вниз/влево к 5 Assigned engineer starts work -> 6 Assigned engineer completes work -> 7 Audit + report.",
-            "От блока 4 сделать красную запрещенную ветку вниз к Forbidden path: supervisor start/complete -> 403.",
-            "В каждом синем блоке написать контроль: neutral auth error, role loaded, bounded offset, object-level check, no secret audit.",
-            "Рядом с запрещенной веткой добавить подпись: P5-01 / CWE-863 / supervisor is authenticated but not authorized for assigned engineer work.",
-            "Экспортировать как PNG/SVG и вставить в отчет как Рисунок 3 перед role/access matrix.",
+            ["F1", "Login request", "Authentication service", "email and password", "Password hash verification, dummy hash path, neutral error."],
+            ["F2", "Access token", "Current user dependency", "Bearer token", "JWT validation and active user lookup."],
+            ["F3", "Supervisor", "Assigned request", "assign engineer action", "Privileged assign/cancel allowed by role check."],
+            ["F4", "Assigned engineer", "Status transition", "in_progress and completed", "Object-level check: actor id equals assigned_engineer_id."],
+            ["F5", "Supervisor/admin", "Forbidden status transition", "start/complete attempt", "HTTP 403 because privileged role is not assigned engineer."],
+            ["F6", "Directory request", "User listing response", "role filter", "Supervisor forced to engineer scope; technical admin can list all roles."],
         ],
     )
     add_table(
@@ -835,19 +933,18 @@ def add_conclusion(doc: Document) -> None:
     )
     add_paragraph(
         doc,
-        "Финальная проверка показывает, что приложение запускается и проходит regression tests, SAST "
-        "и SCA. В отчет включены structural scheme, flowchart, trust boundary map, role/access matrix, "
-        "vulnerability table, CWE, CVSS v4.0 vectors, before/after code fragments и proof-fixed tests. "
-        "Для LMS вместе с отчетом следует отправить папку mvp с исправленным исходным кодом.",
+        "Результаты подтверждены regression tests, SAST, SCA и статической проверкой типов. В отчет "
+        "включены Mermaid-код структурной схемы, карта trust boundaries, flowchart принятия решения "
+        "о доступе, role/access matrix, таблица уязвимостей, классификация CWE, CVSS v4.0 vectors, "
+        "фрагменты кода до и после исправления, а также proof-fixed tests. Для LMS вместе с отчетом "
+        "предоставляется папка mvp с исправленным исходным кодом.",
     )
     add_paragraph(
         doc,
-        "Ручные скриншоты не являются обязательными, потому что требование P5 допускает screenshots "
-        "or logs proving fixes, а в отчете уже есть воспроизводимые command logs. Если преподаватель "
-        "ожидает именно визуальные доказательства, лучше вручную добавить один скрин терминала с "
-        "pytest/SAST output и один скрин Swagger/API или браузерной страницы /app/. Диаграммы уже "
-        "сгенерированы и встроены в отчет; вручную их имеет смысл перерисовывать только для более "
-        "полированного оформления в draw.io или Word.",
+        "Подтверждающие материалы представлены в виде воспроизводимых команд валидации и таблиц "
+        "результатов. Формат соответствует требованию P5 о наличии screenshots or logs proving fixes: "
+        "для каждого исправления указан проверочный тест или инструментальный результат, а диаграммы "
+        "даны как Mermaid-код, пригодный для импорта в draw.io.",
     )
 
 
