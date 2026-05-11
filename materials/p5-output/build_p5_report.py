@@ -140,16 +140,16 @@ def add_code(doc: Document, text: str, *, size: float = 9) -> None:
         run.font.size = Pt(size)
 
 
-def add_mermaid_listing(
+def add_d2_listing(
     doc: Document,
     listing_title: str,
     description: str,
-    mermaid_code: str,
+    d2_code: str,
     flows: list[list[str]],
 ) -> None:
     add_heading(doc, listing_title)
     add_paragraph(doc, description)
-    add_code(doc, f"```mermaid\n{mermaid_code.strip()}\n```", size=8.2)
+    add_code(doc, f"```d2\n{d2_code.strip()}\n```", size=8.2)
     add_paragraph(doc, "Таблица потоков для данной диаграммы:")
     add_table(
         doc,
@@ -269,39 +269,52 @@ def add_intro(doc: Document) -> None:
         "(установление личности), authorization (право на действие или объект) и cryptography "
         "(хеширование паролей, токенов и защита секретов).",
     )
-    add_mermaid_listing(
+    add_d2_listing(
         doc,
-        "Листинг 1. Mermaid-код структурной схемы MVP и trust boundaries.",
-        "Код ниже может быть импортирован в draw.io через Insert -> Advanced -> Mermaid. Диаграмма показывает внешнюю недоверенную зону, границу доверия приложения и основные компоненты обработки данных.",
+        "Листинг 1. D2-код структурной схемы MVP и trust boundaries.",
+        "Код ниже описывает структурную схему в формате D2. Его можно отрендерить через D2 CLI в SVG и вставить в draw.io или Word. Диаграмма показывает внешнюю недоверенную зону, границу доверия приложения и основные компоненты обработки данных.",
         """
-flowchart LR
-    subgraph EXT["External / untrusted zone"]
-        C["Browser / API client"]
-        F["Static frontend /app"]
-    end
-    subgraph APP["Application trust boundary"]
-        R["FastAPI routes"]
-        D["Dependencies: current user and DB session"]
-        V["Pydantic validation and bounded query params"]
-        S["Services and business rules"]
-        A["Authorization: role and object matrix"]
-        L["Audit log helper"]
-        O["SQLAlchemy ORM"]
-        DB[("SQLite / production DB")]
-        T[("Refresh token hash store")]
-    end
-    C -->|"JSON, form data, query params, headers"| R
-    F -->|"same-origin fetch; textContent rendering"| R
-    R --> V
-    R --> D
-    D --> A
-    V --> S
-    A --> S
-    S --> O
-    O --> DB
-    S --> T
-    S --> L
-    L --> DB
+direction: right
+
+external: {
+  label: "External / untrusted zone"
+  style.fill: "#F4F1EA"
+  client: "Browser / API client"
+  frontend: "Static frontend /app"
+}
+
+application: {
+  label: "Application trust boundary"
+  style.fill: "#FBFAF7"
+  routes: "FastAPI routes"
+  dependencies: "Dependencies: current user and DB session"
+  validation: "Pydantic validation and bounded query params"
+  services: "Services and business rules"
+  authorization: "Authorization: role and object matrix"
+  audit: "Audit log helper"
+  orm: "SQLAlchemy ORM"
+  database: {
+    label: "SQLite / production DB"
+    shape: cylinder
+  }
+  refresh_store: {
+    label: "Refresh token hash store"
+    shape: cylinder
+  }
+}
+
+external.client -> application.routes: "JSON, form data, query params, headers"
+external.frontend -> application.routes: "same-origin fetch; textContent rendering"
+application.routes -> application.validation
+application.routes -> application.dependencies
+application.dependencies -> application.authorization
+application.validation -> application.services
+application.authorization -> application.services
+application.services -> application.orm
+application.orm -> application.database
+application.services -> application.refresh_store
+application.services -> application.audit
+application.audit -> application.database
 """,
         [
             ["F1", "Browser/API client", "FastAPI routes", "JSON, form data, query params, headers", "Request size limit, Pydantic validation, neutral errors."],
@@ -326,7 +339,7 @@ flowchart LR
             [
                 "Задание 2: secure code review входов и минимум 3 sink",
                 "Построена карта source-propagation-sink-protection: SQLAlchemy DB, audit JSON, report JSON, refresh token store, frontend DOM.",
-                "Mermaid-код trust boundaries, таблица потоков, таблица sink и подтверждение защит в коде.",
+                "D2-код trust boundaries, таблица потоков, таблица sink и подтверждение защит в коде.",
             ],
             [
                 "Задание 3: authentication, authorization, cryptography",
@@ -340,7 +353,7 @@ flowchart LR
             ],
             [
                 "Отчет: схема, flowchart, vulnerability table, role/access matrix, SAST/SCA, logs",
-                "Все перечисленные элементы включены в отчет; диаграммы представлены Mermaid-кодом для draw.io и таблицами потоков.",
+                "Все перечисленные элементы включены в отчет; диаграммы представлены D2-кодом и таблицами потоков.",
                 "Разделы 1-5 данного отчета.",
             ],
         ],
@@ -432,49 +445,69 @@ def add_task2(doc: Document) -> None:
         "sink и нет внешних сервисов, поэтому они отмечены как not applicable; вместо этого проверены "
         "реально существующие sinks: SQLAlchemy DB, refresh token store, audit JSON, report JSON и DOM-rendering.",
     )
-    add_mermaid_listing(
+    add_d2_listing(
         doc,
-        "Листинг 2. Mermaid-код source -> propagation -> sink -> protection.",
-        "Код предназначен для импорта в draw.io и фиксирует основные точки входа пользовательских данных, распространение внутри MVP, dangerous sinks и меры защиты.",
+        "Листинг 2. D2-код source -> propagation -> sink -> protection.",
+        "Код фиксирует основные точки входа пользовательских данных, распространение внутри MVP, dangerous sinks и меры защиты. D2-источник может быть отрендерен в SVG и использован как схема в draw.io или Word.",
         """
-flowchart LR
-    subgraph SRC["Sources"]
-        S1["Login form: email/password"]
-        S2["Bearer token"]
-        S3["Path and query params"]
-        S4["JSON request body"]
-        S5["Report filters"]
-    end
-    subgraph PROP["Propagation"]
-        P1["FastAPI routes"]
-        P2["Pydantic schemas"]
-        P3["Dependencies"]
-        P4["Service layer"]
-        P5["Authorization checks"]
-    end
-    subgraph SINK["Dangerous sinks"]
-        K1["Password verification and token issuance"]
-        K2["SQLAlchemy DB queries"]
-        K3["Maintenance status update"]
-        K4["Audit JSON details"]
-        K5["Report JSON response"]
-        K6["Frontend DOM"]
-    end
-    subgraph CTRL["Protections"]
-        C1["Argon2 and dummy hash"]
-        C2["ORM expressions and bounded pagination"]
-        C3["Role plus object matrix"]
-        C4["No secret logging"]
-        C5["Pydantic response models"]
-        C6["textContent rendering"]
-    end
-    S1 --> P1 --> K1 --> C1
-    S2 --> P3 --> P5 --> K3 --> C3
-    S3 --> P2 --> P4 --> K2 --> C2
-    S4 --> P2 --> P4 --> K3
-    S5 --> P1 --> P4 --> K5 --> C5
-    K4 --> C4
-    K5 --> K6 --> C6
+direction: right
+
+sources: {
+  label: "Sources"
+  login: "Login form: email/password"
+  token: "Bearer token"
+  params: "Path and query params"
+  body: "JSON request body"
+  filters: "Report filters"
+}
+
+propagation: {
+  label: "Propagation"
+  routes: "FastAPI routes"
+  schemas: "Pydantic schemas"
+  dependencies: "Dependencies"
+  services: "Service layer"
+  authz: "Authorization checks"
+}
+
+sinks: {
+  label: "Dangerous sinks"
+  auth: "Password verification and token issuance"
+  db: "SQLAlchemy DB queries"
+  status_update: "Maintenance status update"
+  audit_json: "Audit JSON details"
+  report_json: "Report JSON response"
+  dom: "Frontend DOM"
+}
+
+protections: {
+  label: "Protections"
+  argon2: "Argon2 and dummy hash"
+  orm_bounds: "ORM expressions and bounded pagination"
+  object_matrix: "Role plus object matrix"
+  no_secret_logging: "No secret logging"
+  response_models: "Pydantic response models"
+  text_content: "textContent rendering"
+}
+
+sources.login -> propagation.routes: "email/password"
+propagation.routes -> sinks.auth: "credential verification"
+sinks.auth -> protections.argon2
+sources.token -> propagation.dependencies: "JWT"
+propagation.dependencies -> propagation.authz
+propagation.authz -> sinks.status_update
+sinks.status_update -> protections.object_matrix
+sources.params -> propagation.schemas
+propagation.schemas -> propagation.services
+propagation.services -> sinks.db
+sinks.db -> protections.orm_bounds
+sources.body -> propagation.schemas: "status payload"
+sources.filters -> propagation.routes
+propagation.services -> sinks.report_json
+sinks.report_json -> protections.response_models
+sinks.audit_json -> protections.no_secret_logging
+sinks.report_json -> sinks.dom
+sinks.dom -> protections.text_content
 """,
         [
             ["F1", "Login form", "Password verification/token sink", "email and password", "Argon2 verification, dummy hash for absent/inactive/locked user, neutral error."],
@@ -574,25 +607,49 @@ def add_task3(doc: Document) -> None:
         "обзора, но не получает право выполнять работу вместо назначенного engineer. Также устранены "
         "side-channel timing discrepancy на login path и риск production bootstrap credentials.",
     )
-    add_mermaid_listing(
+    add_d2_listing(
         doc,
-        "Листинг 3. Mermaid-код блок-схемы authorization decision.",
+        "Листинг 3. D2-код блок-схемы authorization decision.",
         "Код ниже отражает два сценария из задания 3: легитимное выполнение работ назначенным engineer и запрещенную попытку supervisor выполнить работу вместо engineer.",
         """
-flowchart TD
-    L["1. Login request"] --> AU["2. Authentication: active user and password hash"]
-    AU --> TOK["3. Access token issued"]
-    TOK --> LOAD["4. Load current user and request object"]
-    LOAD --> ASSIGN["5. Supervisor assigns engineer"]
-    ASSIGN --> ECHK{"6. Actor is assigned engineer?"}
-    ECHK -->|"yes"| START["7. Move assigned request to in_progress"]
-    START --> DONE["8. Move assigned request to completed"]
-    DONE --> AUDIT["9. Audit event and report data"]
-    ECHK -->|"no; supervisor/admin attempts start or complete"| DENY["403 Forbidden"]
-    LOAD --> DIR{"Directory access requested?"}
-    DIR -->|"supervisor"| ENG["Engineer-only directory"]
-    DIR -->|"technical_admin"| ALL["Full role directory"]
-    DENY --> AUDIT
+direction: down
+
+login: "1. Login request"
+authn: "2. Authentication: active user and password hash"
+token: "3. Access token issued"
+load: "4. Load current user and request object"
+assign: "5. Supervisor assigns engineer"
+engineer_check: {
+  label: "6. Actor is assigned engineer?"
+  shape: diamond
+}
+start: "7. Move assigned request to in_progress"
+complete: "8. Move assigned request to completed"
+audit: "9. Audit event and report data"
+deny: {
+  label: "403 Forbidden"
+  shape: hexagon
+}
+directory_check: {
+  label: "Directory access requested?"
+  shape: diamond
+}
+engineer_directory: "Engineer-only directory"
+full_directory: "Full role directory"
+
+login -> authn
+authn -> token
+token -> load
+load -> assign
+assign -> engineer_check
+engineer_check -> start: "yes"
+start -> complete
+complete -> audit
+engineer_check -> deny: "no: supervisor/admin attempts start or complete"
+deny -> audit
+load -> directory_check
+directory_check -> engineer_directory: "supervisor"
+directory_check -> full_directory: "technical_admin"
 """,
         [
             ["F1", "Login request", "Authentication service", "email and password", "Password hash verification, dummy hash path, neutral error."],
@@ -934,7 +991,7 @@ def add_conclusion(doc: Document) -> None:
     add_paragraph(
         doc,
         "Результаты подтверждены regression tests, SAST, SCA и статической проверкой типов. В отчет "
-        "включены Mermaid-код структурной схемы, карта trust boundaries, flowchart принятия решения "
+        "включены D2-код структурной схемы, карта trust boundaries, flowchart принятия решения "
         "о доступе, role/access matrix, таблица уязвимостей, классификация CWE, CVSS v4.0 vectors, "
         "фрагменты кода до и после исправления, а также proof-fixed tests. Для LMS вместе с отчетом "
         "предоставляется папка mvp с исправленным исходным кодом.",
@@ -944,7 +1001,7 @@ def add_conclusion(doc: Document) -> None:
         "Подтверждающие материалы представлены в виде воспроизводимых команд валидации и таблиц "
         "результатов. Формат соответствует требованию P5 о наличии screenshots or logs proving fixes: "
         "для каждого исправления указан проверочный тест или инструментальный результат, а диаграммы "
-        "даны как Mermaid-код, пригодный для импорта в draw.io.",
+        "даны как D2-код, пригодный для рендеринга в SVG и последующего импорта в draw.io или Word.",
     )
 
 
