@@ -349,7 +349,7 @@ def add_task1(doc: Document) -> None:
         [5.0, 7.5, 8.2, 5.6],
     )
     add_paragraph(doc, "Критичный сценарий P5-03: authenticated supervisor отправляет запрос с offset=1000000000 к спискам активов, заявок, пользователей или отчету. До исправления API принимал такой offset и передавал его в SQLAlchemy .offset(offset). После исправления FastAPI отклоняет offset выше configured maximum с HTTP 422.")
-    add_paragraph(doc, "Фрагмент до исправления:")
+    add_paragraph(doc, "Фрагмент кода до исправления (P5-03):")
     add_code(
         doc,
         annotated_snippet(
@@ -363,7 +363,7 @@ def add_task1(doc: Document) -> None:
             52,
         ),
     )
-    add_paragraph(doc, "Фрагмент после исправления:")
+    add_paragraph(doc, "Фрагмент кода после исправления (P5-03):")
     add_code(
         doc,
         annotated_snippet(
@@ -522,6 +522,7 @@ def add_task3(doc: Document) -> None:
         font_size=8.8,
     )
     add_paragraph(doc, "P5-01. До исправления supervisor/admin проходили early return в ensure_can_transition_request() и могли переводить заявку в in_progress/completed.")
+    add_paragraph(doc, "Фрагмент кода до исправления (P5-01):")
     add_code(
         doc,
         annotated_snippet(
@@ -536,6 +537,7 @@ def add_task3(doc: Document) -> None:
         ),
     )
     add_paragraph(doc, "После исправления privileged roles могут назначать/cancel, но start/complete остается только назначенному engineer.")
+    add_paragraph(doc, "Фрагмент кода после исправления (P5-01):")
     add_code(
         doc,
         annotated_snippet(
@@ -550,6 +552,7 @@ def add_task3(doc: Document) -> None:
         ),
     )
     add_paragraph(doc, "P5-02. До исправления supervisor мог запрашивать всех пользователей или technical_admin через directory endpoint.")
+    add_paragraph(doc, "Фрагмент кода до исправления (P5-02):")
     add_code(
         doc,
         annotated_snippet(
@@ -564,6 +567,7 @@ def add_task3(doc: Document) -> None:
         ),
     )
     add_paragraph(doc, "После исправления supervisor directory принудительно ограничен engineers, а broad directory оставлен только technical admin.")
+    add_paragraph(doc, "Фрагмент кода после исправления (P5-02):")
     add_code(
         doc,
         annotated_snippet(
@@ -578,6 +582,21 @@ def add_task3(doc: Document) -> None:
         ),
     )
     add_paragraph(doc, "P5-04. Login timing discrepancy устранен dummy hash verification: отсутствующий, inactive или locked user теперь проходит сравнимый password verification path перед нейтральной ошибкой.")
+    add_paragraph(doc, "Фрагмент кода до исправления (P5-04):")
+    add_code(
+        doc,
+        annotated_snippet(
+            [
+                "Задание 3 / Authentication risk: missing или inactive user возвращался без password verification.",
+                "Задание 4 / P5-04 / CWE-203 / CVSS 6.9 Medium.",
+                "Риск: ветки missing-user и real-user могли отличаться по времени выполнения.",
+            ],
+            "materials/p4-snapshots/mvp-after/app/services/auth.py",
+            58,
+            70,
+        ),
+    )
+    add_paragraph(doc, "Фрагмент кода после исправления (P5-04):")
     add_code(
         doc,
         annotated_multirange_snippet(
@@ -591,6 +610,21 @@ def add_task3(doc: Document) -> None:
         ),
     )
     add_paragraph(doc, "P5-05. Production secret policy дополнена запретом DEBUG=true и placeholder bootstrap passwords.")
+    add_paragraph(doc, "Фрагмент кода до исправления (P5-05):")
+    add_code(
+        doc,
+        annotated_snippet(
+            [
+                "Задание 3 / Cryptography and secrets: проверялся SECRET_KEY, но не DEBUG и bootstrap passwords.",
+                "Задание 4 / P5-05 / CWE-798 / CVSS 9.2 Critical.",
+                "Риск: production мог стартовать с placeholder bootstrap credentials.",
+            ],
+            "materials/p4-snapshots/mvp-after/app/core/config.py",
+            68,
+            77,
+        ),
+    )
+    add_paragraph(doc, "Фрагмент кода после исправления (P5-05):")
     add_code(
         doc,
         annotated_snippet(
